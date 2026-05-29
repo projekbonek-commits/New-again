@@ -1,0 +1,2047 @@
+name: Build NGR Neo APK One File v0.1.4 Artifact Fix
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Recreate Flutter project from workflow
+        shell: bash
+        run: |
+          set -e
+          rm -rf android ios web linux macos windows test lib assets pubspec.yaml analysis_options.yaml
+          flutter create . --platforms=android --project-name ngr_neo
+          mkdir -p lib assets
+          cat > pubspec.yaml <<'EOF_PUB'
+          name: ngr_neo
+          version: 0.1.4+4
+          publish_to: "none"
+          description: NGR Neo - Liquid Garage OS v0.1.4 artifact upload fix.
+          
+          environment:
+            sdk: ">=3.3.0 <4.0.0"
+          
+          dependencies:
+            flutter:
+              sdk: flutter
+            cupertino_icons: ^1.0.8
+            shared_preferences: ^2.3.5
+          
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+          
+          flutter:
+            uses-material-design: true
+            assets:
+              - assets/ngr_icon.png
+          
+          EOF_PUB
+          cat > lib/main.dart <<'EOF_MAIN'
+          import 'dart:convert';
+          import 'dart:math' as math;
+          import 'dart:ui';
+          
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter/material.dart';
+          import 'package:flutter/services.dart';
+          import 'package:shared_preferences/shared_preferences.dart';
+          
+          void main() {
+            WidgetsFlutterBinding.ensureInitialized();
+            runApp(const NgrNeoApp());
+          }
+          
+          class NgrNeoApp extends StatelessWidget {
+            const NgrNeoApp({super.key});
+          
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'NGR Neo',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData(
+                  useMaterial3: true,
+                  brightness: Brightness.dark,
+                  scaffoldBackgroundColor: NeoColors.bg,
+                  fontFamily: 'Roboto',
+                  colorScheme: const ColorScheme.dark(
+                    primary: NeoColors.cyan,
+                    secondary: NeoColors.blue,
+                    surface: NeoColors.card,
+                  ),
+                ),
+                home: const NeoRoot(),
+              );
+            }
+          }
+          
+          class NeoColors {
+            static const bg = Color(0xFF05070D);
+            static const bg2 = Color(0xFF08121A);
+            static const card = Color(0x1FFFFFFF);
+            static const cardStrong = Color(0x33FFFFFF);
+            static const border = Color(0x26FFFFFF);
+            static const white = Color(0xFFEFF4FF);
+            static const muted = Color(0xFF8C95A6);
+            static const dim = Color(0xFF5F6878);
+            static const cyan = Color(0xFF5DE6F2);
+            static const blue = Color(0xFF70A6FF);
+            static const green = Color(0xFF39E27D);
+            static const red = Color(0xFFFF6B8A);
+            static const yellow = Color(0xFFFFD56B);
+            static const purple = Color(0xFFA48BFF);
+          }
+          
+          class AppData {
+            double virtualKm;
+            double fuelLiters;
+            double fuelPrice;
+            double kmPerLiter;
+            double moneyBudget;
+            List<Map<String, dynamic>> kmLogs;
+            List<Map<String, dynamic>> fuelLogs;
+            List<Map<String, dynamic>> moneyLogs;
+            List<Map<String, dynamic>> problems;
+            List<Map<String, dynamic>> routes;
+            Map<String, dynamic> serviceDoneKm;
+            Map<String, dynamic> serviceDoneDate;
+          
+            AppData({
+              required this.virtualKm,
+              required this.fuelLiters,
+              required this.fuelPrice,
+              required this.kmPerLiter,
+              required this.moneyBudget,
+              required this.kmLogs,
+              required this.fuelLogs,
+              required this.moneyLogs,
+              required this.problems,
+              required this.routes,
+              required this.serviceDoneKm,
+              required this.serviceDoneDate,
+            });
+          
+            factory AppData.fresh() {
+              final now = DateTime.now().toIso8601String();
+              return AppData(
+                virtualKm: 0,
+                fuelLiters: 0,
+                fuelPrice: 10000,
+                kmPerLiter: 55,
+                moneyBudget: 250000,
+                kmLogs: [],
+                fuelLogs: [],
+                moneyLogs: [],
+                problems: [],
+                routes: [],
+                serviceDoneKm: {
+                  'oli_mesin': 0.0,
+                  'oli_gardan': 0.0,
+                  'busi': 0.0,
+                  'cvt': 0.0,
+                },
+                serviceDoneDate: {
+                  'oli_mesin': now,
+                  'oli_gardan': now,
+                  'busi': now,
+                  'cvt': now,
+                },
+              );
+            }
+          
+            factory AppData.fromJson(Map<String, dynamic> json) {
+              return AppData(
+                virtualKm: _toDouble(json['virtualKm'], 0),
+                fuelLiters: _toDouble(json['fuelLiters'], 0),
+                fuelPrice: _toDouble(json['fuelPrice'], 10000),
+                kmPerLiter: _toDouble(json['kmPerLiter'], 55),
+                moneyBudget: _toDouble(json['moneyBudget'], 250000),
+                kmLogs: _listMap(json['kmLogs']),
+                fuelLogs: _listMap(json['fuelLogs']),
+                moneyLogs: _listMap(json['moneyLogs']),
+                problems: _listMap(json['problems']),
+                routes: _listMap(json['routes']),
+                serviceDoneKm: Map<String, dynamic>.from(json['serviceDoneKm'] ?? AppData.fresh().serviceDoneKm),
+                serviceDoneDate: Map<String, dynamic>.from(json['serviceDoneDate'] ?? AppData.fresh().serviceDoneDate),
+              );
+            }
+          
+            Map<String, dynamic> toJson() => {
+                  'virtualKm': virtualKm,
+                  'fuelLiters': fuelLiters,
+                  'fuelPrice': fuelPrice,
+                  'kmPerLiter': kmPerLiter,
+                  'moneyBudget': moneyBudget,
+                  'kmLogs': kmLogs,
+                  'fuelLogs': fuelLogs,
+                  'moneyLogs': moneyLogs,
+                  'problems': problems,
+                  'routes': routes,
+                  'serviceDoneKm': serviceDoneKm,
+                  'serviceDoneDate': serviceDoneDate,
+                };
+          
+            static double _toDouble(dynamic value, double fallback) {
+              if (value is num) return value.toDouble();
+              if (value is String) return double.tryParse(value) ?? fallback;
+              return fallback;
+            }
+          
+            static List<Map<String, dynamic>> _listMap(dynamic value) {
+              if (value is List) {
+                return value.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+              }
+              return [];
+            }
+          }
+          
+          class ServiceSpec {
+            final String id;
+            final String name;
+            final IconData icon;
+            final double intervalKm;
+            final int intervalDays;
+            final String note;
+          
+            const ServiceSpec(this.id, this.name, this.icon, this.intervalKm, this.intervalDays, this.note);
+          }
+          
+          const serviceSpecs = [
+            ServiceSpec('oli_mesin', 'Oli Mesin', CupertinoIcons.drop_fill, 2000, 60, 'Paling penting buat mesin.'),
+            ServiceSpec('oli_gardan', 'Oli Gardan', CupertinoIcons.gear_alt_fill, 8000, 180, 'Buat area gardan matic.'),
+            ServiceSpec('busi', 'Busi', CupertinoIcons.bolt_fill, 8000, 180, 'Cek kalau susah starter/brebet.'),
+            ServiceSpec('cvt', 'CVT', CupertinoIcons.circle_grid_hex_fill, 8000, 180, 'Cek kalau tarikan berat/getar.'),
+          ];
+          
+          class NeoRoot extends StatefulWidget {
+            const NeoRoot({super.key});
+          
+            @override
+            State<NeoRoot> createState() => _NeoRootState();
+          }
+          
+          class _NeoRootState extends State<NeoRoot> {
+            int index = 0;
+            AppData data = AppData.fresh();
+            bool loaded = false;
+          
+            @override
+            void initState() {
+              super.initState();
+              _load();
+            }
+          
+            Future<void> _load() async {
+              final prefs = await SharedPreferences.getInstance();
+              final raw = prefs.getString('ngr_neo_data');
+              if (raw != null) {
+                try {
+                  data = AppData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+                } catch (_) {
+                  data = AppData.fresh();
+                }
+              }
+              setState(() => loaded = true);
+            }
+          
+            Future<void> _save() async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('ngr_neo_data', jsonEncode(data.toJson()));
+            }
+          
+            void _mutate(void Function() run) {
+              setState(run);
+              _save();
+            }
+          
+            String _todayKey([DateTime? dt]) {
+              final d = dt ?? DateTime.now();
+              return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+            }
+          
+            bool get inputToday => data.kmLogs.any((e) => e['dateKey'] == _todayKey());
+          
+            int get streak {
+              final keys = data.kmLogs.map((e) => '${e['dateKey']}').toSet();
+              var count = 0;
+              var cursor = DateTime.now();
+              if (!keys.contains(_todayKey(cursor))) {
+                cursor = cursor.subtract(const Duration(days: 1));
+              }
+              while (keys.contains(_todayKey(cursor))) {
+                count++;
+                cursor = cursor.subtract(const Duration(days: 1));
+              }
+              return count;
+            }
+          
+            double servicePercent(ServiceSpec spec) {
+              final doneKm = AppData._toDouble(data.serviceDoneKm[spec.id], 0);
+              final kmUsed = math.max(0.0, data.virtualKm - doneKm).toDouble();
+              final kmRemainPct = 1 - (kmUsed / spec.intervalKm);
+              final rawDate = data.serviceDoneDate[spec.id]?.toString();
+              final doneDate = DateTime.tryParse(rawDate ?? '') ?? DateTime.now();
+              final daysUsed = DateTime.now().difference(doneDate).inDays;
+              final dayRemainPct = 1 - (daysUsed / spec.intervalDays);
+              final pct = math.min(kmRemainPct, dayRemainPct) * 100;
+              return pct.clamp(0, 100).toDouble();
+            }
+          
+            int get health {
+              final avg = serviceSpecs.map(servicePercent).fold<double>(0, (a, b) => a + b) / serviceSpecs.length;
+              return avg.round().clamp(0, 100).toInt();
+            }
+          
+            double monthMoney({String? category}) {
+              final now = DateTime.now();
+              return data.moneyLogs.where((e) {
+                final dt = DateTime.tryParse('${e['time']}');
+                final sameMonth = dt != null && dt.month == now.month && dt.year == now.year;
+                final catOk = category == null || e['category'] == category;
+                return sameMonth && catOk;
+              }).fold<double>(0, (sum, e) => sum + AppData._toDouble(e['amount'], 0));
+            }
+          
+            void addKm(double km, {String source = 'Daily KM', String note = ''}) {
+              final now = DateTime.now();
+              final double fuelUsed = km <= 0 ? 0.0 : km / math.max(1.0, data.kmPerLiter);
+              _mutate(() {
+                data.virtualKm += km;
+                data.fuelLiters = math.max(0.0, data.fuelLiters - fuelUsed).toDouble();
+                data.kmLogs.insert(0, {
+                  'time': now.toIso8601String(),
+                  'dateKey': _todayKey(now),
+                  'km': km,
+                  'source': source,
+                  'note': note,
+                  'fuelUsed': fuelUsed,
+                });
+              });
+              showNeoSnack(context, km == 0 ? 'Hari ini ditandai libur motor.' : '+${fmt(km)} km masuk. Fuel turun estimasi ${fmt(fuelUsed)} L.');
+            }
+          
+            void addFuel(double liters, {String name = 'Pertalite'}) {
+              final now = DateTime.now();
+              final cost = liters * data.fuelPrice;
+              _mutate(() {
+                data.fuelLiters += liters;
+                data.fuelLogs.insert(0, {
+                  'time': now.toIso8601String(),
+                  'liters': liters,
+                  'name': name,
+                  'price': data.fuelPrice,
+                  'cost': cost,
+                });
+                data.moneyLogs.insert(0, {
+                  'time': now.toIso8601String(),
+                  'category': 'Fuel',
+                  'amount': cost,
+                  'note': '$name ${fmt(liters)} L',
+                });
+              });
+              showNeoSnack(context, '$name ${fmt(liters)} L masuk. Range +${fmt(liters * data.kmPerLiter)} km.');
+            }
+          
+            void addMoney(String category, double amount, String note) {
+              _mutate(() {
+                data.moneyLogs.insert(0, {
+                  'time': DateTime.now().toIso8601String(),
+                  'category': category,
+                  'amount': amount,
+                  'note': note,
+                });
+              });
+              showNeoSnack(context, 'Expense $category Rp${rupiah(amount)} dicatat.');
+            }
+          
+            void addProblem(String title, String level, String note) {
+              _mutate(() {
+                data.problems.insert(0, {
+                  'time': DateTime.now().toIso8601String(),
+                  'title': title,
+                  'level': level,
+                  'note': note,
+                  'status': 'Dipantau',
+                });
+              });
+              showNeoSnack(context, 'Problem dicatat buat Kang Rusdi.');
+            }
+          
+            void markServiceDone(ServiceSpec spec) {
+              _mutate(() {
+                data.serviceDoneKm[spec.id] = data.virtualKm;
+                data.serviceDoneDate[spec.id] = DateTime.now().toIso8601String();
+                data.moneyLogs.insert(0, {
+                  'time': DateTime.now().toIso8601String(),
+                  'category': 'Service',
+                  'amount': 0,
+                  'note': '${spec.name} selesai',
+                });
+              });
+              showNeoSnack(context, '${spec.name} direset ke 100%.');
+            }
+          
+            String rusdiScan() {
+              final nearest = [...serviceSpecs]..sort((a, b) => servicePercent(a).compareTo(servicePercent(b)));
+              final fuelRange = data.fuelLiters * data.kmPerLiter;
+              final money = monthMoney();
+              final buffer = StringBuffer();
+              if (!inputToday) buffer.write('Hari ini belum input KM. ');
+              if (fuelRange < 20) buffer.write('Bensin mepet, isi dulu kalau mau jauh. ');
+              buffer.write('Service paling dekat: ${nearest.first.name} ${servicePercent(nearest.first).round()}%. ');
+              if (money > data.moneyBudget * 0.8) {
+                buffer.write('Money bulan ini udah tinggi, tahan modif dulu.');
+              } else {
+                buffer.write('Money bulan ini masih relatif aman.');
+              }
+              return buffer.toString();
+            }
+          
+            void openSettings() {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => SettingsSheet(
+                  data: data,
+                  onUpdate: (next) => _mutate(() => data = next),
+                ),
+              );
+            }
+          
+            void openQuickAdd() {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => QuickAddSheet(
+                  addKm: addKm,
+                  addFuel: addFuel,
+                  addMoney: addMoney,
+                  addProblem: addProblem,
+                ),
+              );
+            }
+          
+            @override
+            Widget build(BuildContext context) {
+              if (!loaded) {
+                return const Scaffold(body: Center(child: CupertinoActivityIndicator()));
+              }
+          
+              final pages = [
+                HomePage(
+                  data: data,
+                  health: health,
+                  streak: streak,
+                  inputToday: inputToday,
+                  servicePercent: servicePercent,
+                  monthMoney: monthMoney,
+                  addKm: addKm,
+                  addFuel: addFuel,
+                  addMoney: addMoney,
+                  markServiceDone: markServiceDone,
+                  openSettings: openSettings,
+                  rusdiScan: rusdiScan,
+                ),
+                MapsPage(
+                  data: data,
+                  addKm: addKm,
+                  saveRoute: (route) => _mutate(() => data.routes.insert(0, route)),
+                  rusdiScan: rusdiScan,
+                ),
+                FuelPage(data: data, addFuel: addFuel),
+                MoneyPage(data: data, addMoney: addMoney, monthMoney: monthMoney),
+                AssistPage(data: data, addProblem: addProblem, rusdiScan: rusdiScan),
+              ];
+          
+              return Scaffold(
+                body: NeoBackground(
+                  child: Stack(
+                    children: [
+                      SafeArea(bottom: false, child: pages[index]),
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 14,
+                        child: LiquidNavBar(
+                          index: index,
+                          onTap: (i) => setState(() => index = i),
+                        ),
+                      ),
+                      Positioned(
+                        right: 20,
+                        bottom: 108,
+                        child: GestureDetector(
+                          onTap: openQuickAdd,
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(colors: [NeoColors.blue, NeoColors.cyan]),
+                              boxShadow: [BoxShadow(color: NeoColors.cyan.withOpacity(.28), blurRadius: 32, offset: const Offset(0, 12))],
+                            ),
+                            child: const Icon(CupertinoIcons.add, size: 36, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+          
+          class NeoBackground extends StatelessWidget {
+            final Widget child;
+            const NeoBackground({super.key, required this.child});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF05070D), Color(0xFF06111A), Color(0xFF03050A)],
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(top: -120, left: -80, child: _Blob(color: NeoColors.blue.withOpacity(.18), size: 260)),
+                    Positioned(top: 180, right: -100, child: _Blob(color: NeoColors.cyan.withOpacity(.12), size: 260)),
+                    Positioned(bottom: 120, left: -120, child: _Blob(color: NeoColors.purple.withOpacity(.10), size: 280)),
+                    child,
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class _Blob extends StatelessWidget {
+            final Color color;
+            final double size;
+            const _Blob({required this.color, required this.size});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  boxShadow: [BoxShadow(color: color, blurRadius: 90, spreadRadius: 30)],
+                ),
+              );
+            }
+          }
+          
+          class GlassCard extends StatelessWidget {
+            final Widget child;
+            final EdgeInsets padding;
+            final double radius;
+            final Color? color;
+            final VoidCallback? onTap;
+            const GlassCard({
+              super.key,
+              required this.child,
+              this.padding = const EdgeInsets.all(20),
+              this.radius = 28,
+              this.color,
+              this.onTap,
+            });
+          
+            @override
+            Widget build(BuildContext context) {
+              final card = ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    padding: padding,
+                    decoration: BoxDecoration(
+                      color: color ?? Colors.white.withOpacity(.075),
+                      borderRadius: BorderRadius.circular(radius),
+                      border: Border.all(color: Colors.white.withOpacity(.10)),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(.25), blurRadius: 30, offset: const Offset(0, 16))],
+                    ),
+                    child: child,
+                  ),
+                ),
+              );
+              if (onTap == null) return card;
+              return GestureDetector(onTap: onTap, child: card);
+            }
+          }
+          
+          class PageFrame extends StatelessWidget {
+            final Widget child;
+            const PageFrame({super.key, required this.child});
+          
+            @override
+            Widget build(BuildContext context) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 126),
+                physics: const BouncingScrollPhysics(),
+                child: child,
+              );
+            }
+          }
+          
+          class NeoHeader extends StatelessWidget {
+            final String title;
+            final String subtitle;
+            final VoidCallback? onSettings;
+            const NeoHeader({super.key, required this.title, required this.subtitle, this.onSettings});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset('assets/ngr_icon.png', width: 54, height: 54),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -.2)),
+                        const SizedBox(height: 3),
+                        Text(subtitle, style: const TextStyle(fontSize: 14, color: NeoColors.muted, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                  if (onSettings != null)
+                    GlassCard(
+                      padding: EdgeInsets.zero,
+                      radius: 26,
+                      onTap: onSettings,
+                      child: const SizedBox(width: 58, height: 58, child: Icon(CupertinoIcons.gear_alt, size: 25)),
+                    ),
+                ],
+              );
+            }
+          }
+          
+          class HomePage extends StatelessWidget {
+            final AppData data;
+            final int health;
+            final int streak;
+            final bool inputToday;
+            final double Function(ServiceSpec) servicePercent;
+            final double Function({String? category}) monthMoney;
+            final void Function(double, {String source, String note}) addKm;
+            final void Function(double, {String name}) addFuel;
+            final void Function(String, double, String) addMoney;
+            final void Function(ServiceSpec) markServiceDone;
+            final VoidCallback openSettings;
+            final String Function() rusdiScan;
+          
+            const HomePage({
+              super.key,
+              required this.data,
+              required this.health,
+              required this.streak,
+              required this.inputToday,
+              required this.servicePercent,
+              required this.monthMoney,
+              required this.addKm,
+              required this.addFuel,
+              required this.addMoney,
+              required this.markServiceDone,
+              required this.openSettings,
+              required this.rusdiScan,
+            });
+          
+            @override
+            Widget build(BuildContext context) {
+              final range = data.fuelLiters * data.kmPerLiter;
+              final sorted = [...serviceSpecs]..sort((a, b) => servicePercent(a).compareTo(servicePercent(b)));
+              return PageFrame(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    NeoHeader(title: 'NGR Neo', subtitle: 'Liquid Garage OS · Beat FI 2014', onSettings: openSettings),
+                    const SizedBox(height: 22),
+                    GlassCard(
+                      padding: const EdgeInsets.all(22),
+                      child: Row(
+                        children: [
+                          HealthRing(percent: health),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                StatPill(title: 'Virtual KM', value: '${fmt(data.virtualKm)} km'),
+                                StatPill(title: 'Fuel Range', value: '${fmt(range)} km'),
+                                StatPill(title: 'Streak', value: '$streak hari'),
+                                StatPill(title: 'Money', value: 'Rp${rupiah(monthMoney())}'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    DailyKmCard(addKm: addKm, inputToday: inputToday, data: data),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(child: QuickTile(icon: CupertinoIcons.add, title: 'KM', onTap: () => askKm(context, addKm))),
+                        const SizedBox(width: 10),
+                        Expanded(child: QuickTile(icon: CupertinoIcons.drop_fill, title: 'Fuel', onTap: () => askFuel(context, addFuel))),
+                        const SizedBox(width: 10),
+                        Expanded(child: QuickTile(icon: CupertinoIcons.wrench_fill, title: 'Service', onTap: () => markServiceDone(sorted.first))),
+                        const SizedBox(width: 10),
+                        Expanded(child: QuickTile(icon: CupertinoIcons.creditcard_fill, title: 'Money', onTap: () => askMoney(context, addMoney))),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SectionTitle('Service Priority', right: 'terdekat'),
+                    const SizedBox(height: 12),
+                    ...sorted.take(4).map((spec) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: ServiceCompactCard(spec: spec, percent: servicePercent(spec), onDone: () => markServiceDone(spec)),
+                        )),
+                    const SizedBox(height: 18),
+                    SectionTitle('Kang Rusdi Scan', right: 'ringkas'),
+                    const SizedBox(height: 12),
+                    GlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(rusdiScan(), style: const TextStyle(fontSize: 16, height: 1.45, color: NeoColors.white)),
+                          const SizedBox(height: 18),
+                          NeoButton(label: 'Buka NGR Assist', icon: CupertinoIcons.sparkles, onTap: () {}),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class HealthRing extends StatelessWidget {
+            final int percent;
+            const HealthRing({super.key, required this.percent});
+          
+            @override
+            Widget build(BuildContext context) {
+              return SizedBox(
+                width: 126,
+                height: 126,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 126,
+                      height: 126,
+                      child: CircularProgressIndicator(
+                        value: percent / 100,
+                        strokeWidth: 13,
+                        strokeCap: StrokeCap.round,
+                        color: percent > 55 ? NeoColors.green : percent > 25 ? NeoColors.yellow : NeoColors.red,
+                        backgroundColor: Colors.white.withOpacity(.08),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$percent%', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: -1.2)),
+                        const Text('Health', style: TextStyle(color: NeoColors.muted, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class StatPill extends StatelessWidget {
+            final String title;
+            final String value;
+            const StatPill({super.key, required this.title, required this.value});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Container(
+                width: 128,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.white.withOpacity(.08)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -.4)),
+                  const SizedBox(height: 5),
+                  Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, letterSpacing: 1.6, color: NeoColors.muted, fontWeight: FontWeight.w800)),
+                ]),
+              );
+            }
+          }
+          
+          class DailyKmCard extends StatelessWidget {
+            final void Function(double, {String source, String note}) addKm;
+            final bool inputToday;
+            final AppData data;
+            const DailyKmCard({super.key, required this.addKm, required this.inputToday, required this.data});
+          
+            @override
+            Widget build(BuildContext context) {
+              return GlassCard(
+                color: const Color(0x1A3AA4FF),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(child: Text('Daily KM', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -.4))),
+                        StatusPill(text: inputToday ? 'Sudah input' : 'Belum input', ok: inputToday),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text('Input harian biar streak gak putus. GPS dibuang.', style: TextStyle(color: NeoColors.muted, fontSize: 15, height: 1.35)),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(child: ChipButton(label: '0 km', onTap: () => addKm(0, note: 'Libur motor'))),
+                        const SizedBox(width: 9),
+                        Expanded(child: ChipButton(label: '+5', onTap: () => addKm(5))),
+                        const SizedBox(width: 9),
+                        Expanded(child: ChipButton(label: '+10', onTap: () => addKm(10))),
+                        const SizedBox(width: 9),
+                        Expanded(child: ChipButton(label: '+15', onTap: () => addKm(15))),
+                        const SizedBox(width: 9),
+                        Expanded(child: ChipButton(label: 'Custom', onTap: () => askKm(context, addKm))),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    StreakCalendar(logs: data.kmLogs),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class StreakCalendar extends StatelessWidget {
+            final List<Map<String, dynamic>> logs;
+            const StreakCalendar({super.key, required this.logs});
+          
+            String keyOf(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+          
+            @override
+            Widget build(BuildContext context) {
+              final keys = logs.map((e) => '${e['dateKey']}').toSet();
+              final today = DateTime.now();
+              final days = List.generate(14, (i) => today.subtract(Duration(days: 13 - i)));
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: days.map((d) {
+                  final active = keys.contains(keyOf(d));
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    width: 44,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: active ? NeoColors.green.withOpacity(.20) : Colors.white.withOpacity(.055),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: active ? NeoColors.green.withOpacity(.45) : Colors.white.withOpacity(.08)),
+                    ),
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text(dayName(d.weekday), style: TextStyle(fontSize: 11, color: active ? NeoColors.green : NeoColors.dim, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text('${d.day}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                    ]),
+                  );
+                }).toList(),
+              );
+            }
+          }
+          
+          class QuickTile extends StatelessWidget {
+            final IconData icon;
+            final String title;
+            final VoidCallback onTap;
+            const QuickTile({super.key, required this.icon, required this.title, required this.onTap});
+          
+            @override
+            Widget build(BuildContext context) {
+              return GlassCard(
+                onTap: onTap,
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+                radius: 24,
+                child: Column(children: [
+                  Icon(icon, size: 27, color: NeoColors.white),
+                  const SizedBox(height: 10),
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                ]),
+              );
+            }
+          }
+          
+          class ServiceCompactCard extends StatelessWidget {
+            final ServiceSpec spec;
+            final double percent;
+            final VoidCallback onDone;
+            const ServiceCompactCard({super.key, required this.spec, required this.percent, required this.onDone});
+          
+            @override
+            Widget build(BuildContext context) {
+              final color = percent > 55 ? NeoColors.green : percent > 25 ? NeoColors.yellow : NeoColors.red;
+              return GlassCard(
+                onTap: onDone,
+                padding: const EdgeInsets.all(16),
+                radius: 24,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(.07), borderRadius: BorderRadius.circular(18)),
+                      child: Icon(spec.icon, color: color, size: 25),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(spec.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 4),
+                        Text('${spec.note} · ${spec.intervalKm.round()} km / ${spec.intervalDays} hari', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: NeoColors.muted, height: 1.25)),
+                      ]),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 58,
+                      height: 58,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: color.withOpacity(.9)),
+                      child: Text('${percent.round()}%', style: const TextStyle(color: Color(0xFF03100A), fontWeight: FontWeight.w900)),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class MapsPage extends StatefulWidget {
+            final AppData data;
+            final void Function(double, {String source, String note}) addKm;
+            final void Function(Map<String, dynamic>) saveRoute;
+            final String Function() rusdiScan;
+            const MapsPage({super.key, required this.data, required this.addKm, required this.saveRoute, required this.rusdiScan});
+          
+            @override
+            State<MapsPage> createState() => _MapsPageState();
+          }
+          
+          class _MapsPageState extends State<MapsPage> {
+            final start = TextEditingController(text: 'Rumah');
+            final end = TextEditingController(text: 'Sekolah');
+            final km = TextEditingController();
+          
+            @override
+            void dispose() {
+              start.dispose();
+              end.dispose();
+              km.dispose();
+              super.dispose();
+            }
+          
+            double get distance => double.tryParse(km.text.replaceAll(',', '.')) ?? 0;
+          
+            @override
+            Widget build(BuildContext context) {
+              final double fuel = distance / math.max(1.0, widget.data.kmPerLiter);
+              final cost = fuel * widget.data.fuelPrice;
+              return PageFrame(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const NeoHeader(title: 'Maps', subtitle: 'Route planner tanpa GPS live'),
+                    const SizedBox(height: 18),
+                    GlassCard(
+                      padding: EdgeInsets.zero,
+                      radius: 32,
+                      child: SizedBox(
+                        height: 380,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(32),
+                          child: Stack(
+                            children: [
+                              const Positioned.fill(child: _NeoMapPreview()),
+                              Positioned(
+                                left: 18,
+                                top: 18,
+                                child: StatusPill(text: 'Map engine slot', ok: true),
+                              ),
+                              Positioned(
+                                left: 18,
+                                right: 18,
+                                bottom: 18,
+                                child: GlassCard(
+                                  radius: 24,
+                                  padding: const EdgeInsets.all(16),
+                                  child: const Text(
+                                    'Phase ini fokus Flutter UI dulu. MapLibre/MapTiler tinggal masuk di slot ini setelah core stabil, biar gak blank kayak versi web.',
+                                    style: TextStyle(color: NeoColors.white, height: 1.35),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Route Input', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 14),
+                          NeoField(controller: start, label: 'Start'),
+                          const SizedBox(height: 10),
+                          NeoField(controller: end, label: 'Tujuan'),
+                          const SizedBox(height: 10),
+                          NeoField(controller: km, label: 'Jarak ikut jalan (km)', keyboard: TextInputType.number, onChanged: (_) => setState(() {})),
+                          const SizedBox(height: 14),
+                          Row(children: [
+                            Expanded(child: StatPill(title: 'Est. Fuel', value: '${fmt(fuel)} L')),
+                            const SizedBox(width: 10),
+                            Expanded(child: StatPill(title: 'Est. Cost', value: 'Rp${rupiah(cost)}')),
+                          ]),
+                          const SizedBox(height: 16),
+                          Row(children: [
+                            Expanded(
+                              child: NeoButton(
+                                label: 'Simpan Rute',
+                                icon: CupertinoIcons.bookmark,
+                                onTap: distance <= 0
+                                    ? null
+                                    : () {
+                                        widget.saveRoute({
+                                          'time': DateTime.now().toIso8601String(),
+                                          'start': start.text,
+                                          'end': end.text,
+                                          'km': distance,
+                                        });
+                                        showNeoSnack(context, 'Rute disimpan.');
+                                      },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: NeoButton(
+                                label: 'Tambah ke KM',
+                                icon: CupertinoIcons.plus_circle,
+                                onTap: distance <= 0 ? null : () => widget.addKm(distance, source: 'Route', note: '${start.text} → ${end.text}'),
+                              ),
+                            ),
+                          ]),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    SectionTitle('Rute Favorit', right: '${widget.data.routes.length} item'),
+                    const SizedBox(height: 12),
+                    if (widget.data.routes.isEmpty)
+                      const EmptyCard(text: 'Belum ada rute favorit. Simpan rute harian kayak Rumah → Sekolah di sini.'),
+                    ...widget.data.routes.take(5).map((route) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: GlassCard(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(children: [
+                              const Icon(CupertinoIcons.map, color: NeoColors.blue),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text('${route['start']} → ${route['end']}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                              Text('${fmt(AppData._toDouble(route['km'], 0))} km', style: const TextStyle(color: NeoColors.muted, fontWeight: FontWeight.w800)),
+                            ]),
+                          ),
+                        )),
+                    const SizedBox(height: 18),
+                    GlassCard(
+                      child: Text('Rusdi Route Scan: ${widget.rusdiScan()}', style: const TextStyle(height: 1.4)),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class _NeoMapPreview extends StatelessWidget {
+            const _NeoMapPreview();
+          
+            @override
+            Widget build(BuildContext context) {
+              return CustomPaint(
+                painter: _MapPainter(),
+                child: const SizedBox.expand(),
+              );
+            }
+          }
+          
+          class _MapPainter extends CustomPainter {
+            @override
+            void paint(Canvas canvas, Size size) {
+              final bg = Paint()..shader = const LinearGradient(colors: [Color(0xFF07101B), Color(0xFF0A1A23)]).createShader(Offset.zero & size);
+              canvas.drawRect(Offset.zero & size, bg);
+              final road = Paint()
+                ..color = Colors.white.withOpacity(.08)
+                ..strokeWidth = 2;
+              for (var i = 0.0; i < size.width; i += 42) {
+                canvas.drawLine(Offset(i, 0), Offset(i + 80, size.height), road);
+              }
+              for (var y = 0.0; y < size.height; y += 48) {
+                canvas.drawLine(Offset(0, y), Offset(size.width, y + 40), road);
+              }
+              final path = Path()
+                ..moveTo(size.width * .16, size.height * .72)
+                ..cubicTo(size.width * .26, size.height * .50, size.width * .45, size.height * .74, size.width * .54, size.height * .46)
+                ..cubicTo(size.width * .62, size.height * .22, size.width * .76, size.height * .36, size.width * .86, size.height * .18);
+              final glow = Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeCap = StrokeCap.round
+                ..strokeWidth = 15
+                ..color = NeoColors.cyan.withOpacity(.15);
+              canvas.drawPath(path, glow);
+              final line = Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeCap = StrokeCap.round
+                ..strokeWidth = 5
+                ..shader = const LinearGradient(colors: [NeoColors.blue, NeoColors.cyan]).createShader(Offset.zero & size);
+              canvas.drawPath(path, line);
+              final dotPaint = Paint()..color = NeoColors.green;
+              canvas.drawCircle(Offset(size.width * .16, size.height * .72), 8, dotPaint);
+              dotPaint.color = NeoColors.red;
+              canvas.drawCircle(Offset(size.width * .86, size.height * .18), 8, dotPaint);
+            }
+          
+            @override
+            bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+          }
+          
+          class FuelPage extends StatelessWidget {
+            final AppData data;
+            final void Function(double, {String name}) addFuel;
+            const FuelPage({super.key, required this.data, required this.addFuel});
+          
+            @override
+            Widget build(BuildContext context) {
+              final range = data.fuelLiters * data.kmPerLiter;
+              return PageFrame(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const NeoHeader(title: 'Fuel', subtitle: 'Bensin, range, dan riwayat'),
+                    const SizedBox(height: 18),
+                    GlassCard(
+                      color: NeoColors.green.withOpacity(.08),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('Fuel Balance', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          Expanded(child: BigNumber(value: '${fmt(data.fuelLiters)} L', label: 'sisa bensin')),
+                          Expanded(child: BigNumber(value: '${fmt(range)} km', label: 'estimasi range')),
+                        ]),
+                        const SizedBox(height: 18),
+                        Wrap(spacing: 9, runSpacing: 9, children: [
+                          ChipAction('Pertalite 1L', () => addFuel(1, name: 'Pertalite')),
+                          ChipAction('Pertalite 2L', () => addFuel(2, name: 'Pertalite')),
+                          ChipAction('Pertamax 1L', () => addFuel(1, name: 'Pertamax')),
+                          ChipAction('Custom', () => askFuel(context, addFuel)),
+                        ]),
+                      ]),
+                    ),
+                    const SizedBox(height: 18),
+                    SectionTitle('Fuel Chart', right: 'naik/turun'),
+                    const SizedBox(height: 12),
+                    GlassCard(child: FuelMiniChart(logs: data.fuelLogs)),
+                    const SizedBox(height: 18),
+                    SectionTitle('History', right: '${data.fuelLogs.length} log'),
+                    const SizedBox(height: 12),
+                    if (data.fuelLogs.isEmpty) const EmptyCard(text: 'Belum ada isi BBM.'),
+                    ...data.fuelLogs.take(8).map((e) => LogTile(
+                          icon: CupertinoIcons.drop_fill,
+                          title: '${e['name']} ${fmt(AppData._toDouble(e['liters'], 0))} L',
+                          subtitle: formatDate('${e['time']}'),
+                          trailing: 'Rp${rupiah(AppData._toDouble(e['cost'], 0))}',
+                        )),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class FuelMiniChart extends StatelessWidget {
+            final List<Map<String, dynamic>> logs;
+            const FuelMiniChart({super.key, required this.logs});
+          
+            @override
+            Widget build(BuildContext context) {
+              return SizedBox(height: 150, child: CustomPaint(painter: _ChartPainter(logs)));
+            }
+          }
+          
+          class _ChartPainter extends CustomPainter {
+            final List<Map<String, dynamic>> logs;
+            _ChartPainter(this.logs);
+          
+            @override
+            void paint(Canvas canvas, Size size) {
+              final grid = Paint()
+                ..color = Colors.white.withOpacity(.07)
+                ..strokeWidth = 1;
+              for (var i = 1; i < 4; i++) {
+                final y = size.height * i / 4;
+                canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+              }
+              if (logs.isEmpty) {
+                final tp = TextPainter(
+                  text: const TextSpan(text: 'Chart muncul setelah isi BBM.', style: TextStyle(color: NeoColors.muted, fontSize: 14)),
+                  textDirection: TextDirection.ltr,
+                )..layout(maxWidth: size.width);
+                tp.paint(canvas, Offset((size.width - tp.width) / 2, (size.height - tp.height) / 2));
+                return;
+              }
+              final points = logs.reversed.take(12).toList();
+              final maxLiters = points.map((e) => AppData._toDouble(e['liters'], 0)).fold<double>(1.0, (a, b) => math.max(a, b).toDouble());
+              final path = Path();
+              for (var i = 0; i < points.length; i++) {
+                final x = points.length == 1 ? size.width / 2 : size.width * i / (points.length - 1);
+                final value = AppData._toDouble(points[i]['liters'], 0);
+                final y = size.height - (value / maxLiters * size.height * .75) - 10;
+                if (i == 0) {
+                  path.moveTo(x, y);
+                } else {
+                  path.lineTo(x, y);
+                }
+              }
+              final paint = Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeCap = StrokeCap.round
+                ..strokeJoin = StrokeJoin.round
+                ..strokeWidth = 4
+                ..shader = const LinearGradient(colors: [NeoColors.green, NeoColors.cyan]).createShader(Offset.zero & size);
+              canvas.drawPath(path, paint);
+            }
+          
+            @override
+            bool shouldRepaint(covariant _ChartPainter oldDelegate) => oldDelegate.logs != logs;
+          }
+          
+          class MoneyPage extends StatelessWidget {
+            final AppData data;
+            final void Function(String, double, String) addMoney;
+            final double Function({String? category}) monthMoney;
+            const MoneyPage({super.key, required this.data, required this.addMoney, required this.monthMoney});
+          
+            @override
+            Widget build(BuildContext context) {
+              final total = monthMoney();
+              final pct = (total / math.max(1.0, data.moneyBudget)).clamp(0, 1).toDouble();
+              return PageFrame(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const NeoHeader(title: 'Money', subtitle: 'Expense, budget, celengan'),
+                  const SizedBox(height: 18),
+                  GlassCard(
+                    color: NeoColors.purple.withOpacity(.07),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Bulan Ini', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 12),
+                      Text('Rp${rupiah(total)}', style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900, letterSpacing: -1.4)),
+                      const SizedBox(height: 6),
+                      Text('Budget Rp${rupiah(data.moneyBudget)} · ${(pct * 100).round()}%', style: const TextStyle(color: NeoColors.muted, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(value: pct, minHeight: 10, color: pct > .85 ? NeoColors.red : NeoColors.cyan, backgroundColor: Colors.white.withOpacity(.08)),
+                      ),
+                      const SizedBox(height: 18),
+                      NeoButton(label: 'Tambah Expense', icon: CupertinoIcons.plus, onTap: () => askMoney(context, addMoney)),
+                    ]),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(children: [
+                    Expanded(child: CategoryCard(title: 'Fuel', value: monthMoney(category: 'Fuel'), icon: CupertinoIcons.drop_fill)),
+                    const SizedBox(width: 10),
+                    Expanded(child: CategoryCard(title: 'Service', value: monthMoney(category: 'Service'), icon: CupertinoIcons.wrench_fill)),
+                  ]),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(child: CategoryCard(title: 'Modif', value: monthMoney(category: 'Modif'), icon: CupertinoIcons.sparkles)),
+                    const SizedBox(width: 10),
+                    Expanded(child: CategoryCard(title: 'Tools', value: monthMoney(category: 'Tools'), icon: CupertinoIcons.hammer_fill)),
+                  ]),
+                  const SizedBox(height: 18),
+                  SectionTitle('Riwayat', right: '${data.moneyLogs.length} log'),
+                  const SizedBox(height: 12),
+                  if (data.moneyLogs.isEmpty) const EmptyCard(text: 'Belum ada expense.'),
+                  ...data.moneyLogs.take(10).map((e) => LogTile(
+                        icon: CupertinoIcons.creditcard_fill,
+                        title: '${e['category']} · ${e['note'] ?? ''}',
+                        subtitle: formatDate('${e['time']}'),
+                        trailing: 'Rp${rupiah(AppData._toDouble(e['amount'], 0))}',
+                      )),
+                ]),
+              );
+            }
+          }
+          
+          class AssistPage extends StatelessWidget {
+            final AppData data;
+            final void Function(String, String, String) addProblem;
+            final String Function() rusdiScan;
+            const AssistPage({super.key, required this.data, required this.addProblem, required this.rusdiScan});
+          
+            @override
+            Widget build(BuildContext context) {
+              return PageFrame(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const NeoHeader(title: 'NGR Assist', subtitle: 'Kang Rusdi, FI, emergency'),
+                  const SizedBox(height: 18),
+                  GlassCard(
+                    color: NeoColors.blue.withOpacity(.08),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Row(children: [
+                        Icon(CupertinoIcons.sparkles, color: NeoColors.cyan),
+                        SizedBox(width: 10),
+                        Text('Kang Rusdi', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                      ]),
+                      const SizedBox(height: 12),
+                      Text(rusdiScan(), style: const TextStyle(fontSize: 16, height: 1.45)),
+                      const SizedBox(height: 14),
+                      const Text('AI online bisa disambung nanti. Phase ini Rusdi pakai rule lokal dulu biar ringan.', style: TextStyle(color: NeoColors.muted, height: 1.35)),
+                    ]),
+                  ),
+                  const SizedBox(height: 18),
+                  SectionTitle('Emergency Road Assist', right: 'cepat'),
+                  const SizedBox(height: 12),
+                  GuideCard(
+                    icon: CupertinoIcons.exclamationmark_triangle_fill,
+                    title: 'Motor mati di jalan',
+                    steps: const ['Pinggirkan motor dulu.', 'Cek bensin dan indikator FI.', 'Cek starter/aki/sekring.', 'Kalau ada alat, cek busi.', 'Jangan paksa kalau bunyi kasar.'],
+                    onLog: () => askProblem(context, addProblem, preset: 'Motor mati di jalan'),
+                  ),
+                  GuideCard(
+                    icon: CupertinoIcons.bolt_fill,
+                    title: 'Busi lemah / mati',
+                    steps: const ['Gejala: susah starter, brebet, langsam gak stabil.', 'Cek cop busi rapat.', 'Kalau basah/hitam parah, bersihkan/ganti.', 'Kalau mogok total, bawa busi cadangan.'],
+                    onLog: () => askProblem(context, addProblem, preset: 'Curiga busi'),
+                  ),
+                  GuideCard(
+                    icon: CupertinoIcons.battery_25,
+                    title: 'Aki / starter lemah',
+                    steps: const ['Lampu redup atau starter cetek-cetek.', 'Cek terminal aki kendor/korosi.', 'Pakai kick starter kalau ada.', 'Kalau sering drop, cek kiprok/aki.'],
+                    onLog: () => askProblem(context, addProblem, preset: 'Aki/starter lemah'),
+                  ),
+                  GuideCard(
+                    icon: CupertinoIcons.dot_radiowaves_left_right,
+                    title: 'FI Code Helper',
+                    steps: const ['Kedipan panjang = puluhan.', 'Kedipan pendek = satuan.', 'Contoh 1 panjang + 2 pendek = 12.', 'Catat kode, jangan asal bongkar sensor.'],
+                    onLog: () => askProblem(context, addProblem, preset: 'FI kedip'),
+                  ),
+                  const SizedBox(height: 18),
+                  SectionTitle('Problem Diary', right: '${data.problems.length} log'),
+                  const SizedBox(height: 12),
+                  NeoButton(label: 'Catat Problem', icon: CupertinoIcons.plus, onTap: () => askProblem(context, addProblem)),
+                  const SizedBox(height: 12),
+                  if (data.problems.isEmpty) const EmptyCard(text: 'Belum ada problem. Kalau ada gejala aneh, catat biar gak lupa.'),
+                  ...data.problems.take(8).map((e) => LogTile(
+                        icon: CupertinoIcons.doc_text,
+                        title: '${e['title']} · ${e['level']}',
+                        subtitle: '${e['note'] ?? ''}\n${formatDate('${e['time']}')}',
+                        trailing: '${e['status']}',
+                      )),
+                ]),
+              );
+            }
+          }
+          
+          class LiquidNavBar extends StatelessWidget {
+            final int index;
+            final ValueChanged<int> onTap;
+            const LiquidNavBar({super.key, required this.index, required this.onTap});
+          
+            static const items = [
+              _NavItem(CupertinoIcons.house, 'Home'),
+              _NavItem(CupertinoIcons.map, 'Maps'),
+              _NavItem(CupertinoIcons.drop, 'Fuel'),
+              _NavItem(CupertinoIcons.creditcard, 'Money'),
+              _NavItem(CupertinoIcons.sparkles, 'Assist'),
+            ];
+          
+            @override
+            Widget build(BuildContext context) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(34),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                  child: Container(
+                    height: 84,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xCC111720),
+                      borderRadius: BorderRadius.circular(34),
+                      border: Border.all(color: Colors.white.withOpacity(.12)),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(.45), blurRadius: 30, offset: const Offset(0, 18))],
+                    ),
+                    child: Row(
+                      children: List.generate(items.length, (i) {
+                        final active = i == index;
+                        final item = items[i];
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => onTap(i),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeOutCubic,
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              decoration: BoxDecoration(
+                                color: active ? NeoColors.blue.withOpacity(.24) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(26),
+                                border: active ? Border.all(color: NeoColors.blue.withOpacity(.32)) : null,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(item.icon, color: active ? NeoColors.white : NeoColors.muted, size: 24),
+                                  const SizedBox(height: 5),
+                                  Text(item.label, style: TextStyle(fontSize: 12, color: active ? NeoColors.white : NeoColors.muted, fontWeight: FontWeight.w800)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          
+          class _NavItem {
+            final IconData icon;
+            final String label;
+            const _NavItem(this.icon, this.label);
+          }
+          
+          class SectionTitle extends StatelessWidget {
+            final String title;
+            final String? right;
+            const SectionTitle(this.title, {super.key, this.right});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Row(children: [
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -.5))),
+                if (right != null) Text(right!, style: const TextStyle(color: NeoColors.muted, fontWeight: FontWeight.w800)),
+              ]);
+            }
+          }
+          
+          class StatusPill extends StatelessWidget {
+            final String text;
+            final bool ok;
+            const StatusPill({super.key, required this.text, required this.ok});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: (ok ? NeoColors.green : NeoColors.red).withOpacity(.15),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(color: (ok ? NeoColors.green : NeoColors.red).withOpacity(.24)),
+                ),
+                child: Text(text, style: TextStyle(color: ok ? NeoColors.green : NeoColors.red, fontWeight: FontWeight.w900)),
+              );
+            }
+          }
+          
+          class ChipButton extends StatelessWidget {
+            final String label;
+            final VoidCallback onTap;
+            const ChipButton({super.key, required this.label, required this.onTap});
+          
+            @override
+            Widget build(BuildContext context) {
+              return GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.075),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: Colors.white.withOpacity(.10)),
+                  ),
+                  child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                ),
+              );
+            }
+          }
+          
+          class ChipAction extends StatelessWidget {
+            final String label;
+            final VoidCallback onTap;
+            const ChipAction(this.label, this.onTap, {super.key});
+          
+            @override
+            Widget build(BuildContext context) {
+              return GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(.08), borderRadius: BorderRadius.circular(99), border: Border.all(color: Colors.white.withOpacity(.10))),
+                  child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              );
+            }
+          }
+          
+          class NeoButton extends StatelessWidget {
+            final String label;
+            final IconData icon;
+            final VoidCallback? onTap;
+            const NeoButton({super.key, required this.label, required this.icon, this.onTap});
+          
+            @override
+            Widget build(BuildContext context) {
+              final enabled = onTap != null;
+              return GestureDetector(
+                onTap: onTap,
+                child: Opacity(
+                  opacity: enabled ? 1 : .45,
+                  child: Container(
+                    height: 54,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: enabled ? const LinearGradient(colors: [Color(0xFF356DFF), Color(0xFF53E4F1)]) : null,
+                      color: enabled ? null : Colors.white.withOpacity(.08),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: enabled ? [BoxShadow(color: NeoColors.cyan.withOpacity(.16), blurRadius: 22, offset: const Offset(0, 10))] : null,
+                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(icon, size: 20, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15))),
+                    ]),
+                  ),
+                ),
+              );
+            }
+          }
+          
+          class NeoField extends StatelessWidget {
+            final TextEditingController controller;
+            final String label;
+            final TextInputType? keyboard;
+            final ValueChanged<String>? onChanged;
+            const NeoField({super.key, required this.controller, required this.label, this.keyboard, this.onChanged});
+          
+            @override
+            Widget build(BuildContext context) {
+              return TextField(
+                controller: controller,
+                keyboardType: keyboard,
+                onChanged: onChanged,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+                decoration: InputDecoration(
+                  labelText: label,
+                  labelStyle: const TextStyle(color: NeoColors.muted),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(.065),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: Colors.white.withOpacity(.10))),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: NeoColors.cyan)),
+                ),
+              );
+            }
+          }
+          
+          class BigNumber extends StatelessWidget {
+            final String value;
+            final String label;
+            const BigNumber({super.key, required this.value, required this.label});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(value, style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: -1.2)),
+                const SizedBox(height: 4),
+                Text(label.toUpperCase(), style: const TextStyle(color: NeoColors.muted, fontWeight: FontWeight.w900, letterSpacing: 1.4, fontSize: 11)),
+              ]);
+            }
+          }
+          
+          class CategoryCard extends StatelessWidget {
+            final String title;
+            final double value;
+            final IconData icon;
+            const CategoryCard({super.key, required this.title, required this.value, required this.icon});
+          
+            @override
+            Widget build(BuildContext context) {
+              return GlassCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(icon, color: NeoColors.cyan),
+                  const SizedBox(height: 12),
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 5),
+                  Text('Rp${rupiah(value)}', style: const TextStyle(color: NeoColors.muted, fontWeight: FontWeight.w800)),
+                ]),
+              );
+            }
+          }
+          
+          class GuideCard extends StatelessWidget {
+            final IconData icon;
+            final String title;
+            final List<String> steps;
+            final VoidCallback onLog;
+            const GuideCard({super.key, required this.icon, required this.title, required this.steps, required this.onLog});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Icon(icon, color: NeoColors.yellow),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+                    ]),
+                    const SizedBox(height: 10),
+                    ...steps.map((s) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('• ', style: TextStyle(color: NeoColors.cyan, fontWeight: FontWeight.w900)),
+                            Expanded(child: Text(s, style: const TextStyle(color: NeoColors.muted, height: 1.28))),
+                          ]),
+                        )),
+                    const SizedBox(height: 10),
+                    ChipAction('Catat Problem', onLog),
+                  ]),
+                ),
+              );
+            }
+          }
+          
+          class EmptyCard extends StatelessWidget {
+            final String text;
+            const EmptyCard({super.key, required this.text});
+          
+            @override
+            Widget build(BuildContext context) {
+              return GlassCard(child: Text(text, style: const TextStyle(color: NeoColors.muted, height: 1.35)));
+            }
+          }
+          
+          class LogTile extends StatelessWidget {
+            final IconData icon;
+            final String title;
+            final String subtitle;
+            final String trailing;
+            const LogTile({super.key, required this.icon, required this.title, required this.subtitle, required this.trailing});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GlassCard(
+                  padding: const EdgeInsets.all(14),
+                  radius: 22,
+                  child: Row(children: [
+                    Icon(icon, color: NeoColors.cyan),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 4),
+                      Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: NeoColors.muted, height: 1.25)),
+                    ])),
+                    const SizedBox(width: 10),
+                    Text(trailing, style: const TextStyle(fontWeight: FontWeight.w900, color: NeoColors.white)),
+                  ]),
+                ),
+              );
+            }
+          }
+          
+          class SettingsSheet extends StatefulWidget {
+            final AppData data;
+            final ValueChanged<AppData> onUpdate;
+            const SettingsSheet({super.key, required this.data, required this.onUpdate});
+          
+            @override
+            State<SettingsSheet> createState() => _SettingsSheetState();
+          }
+          
+          class _SettingsSheetState extends State<SettingsSheet> {
+            late final TextEditingController fuelPrice;
+            late final TextEditingController kmPerLiter;
+            late final TextEditingController budget;
+          
+            @override
+            void initState() {
+              super.initState();
+              fuelPrice = TextEditingController(text: widget.data.fuelPrice.round().toString());
+              kmPerLiter = TextEditingController(text: fmt(widget.data.kmPerLiter));
+              budget = TextEditingController(text: widget.data.moneyBudget.round().toString());
+            }
+          
+            @override
+            void dispose() {
+              fuelPrice.dispose();
+              kmPerLiter.dispose();
+              budget.dispose();
+              super.dispose();
+            }
+          
+            @override
+            Widget build(BuildContext context) {
+              return NeoSheet(
+                title: 'Settings',
+                child: Column(children: [
+                  NeoField(controller: fuelPrice, label: 'Harga BBM per liter', keyboard: TextInputType.number),
+                  const SizedBox(height: 10),
+                  NeoField(controller: kmPerLiter, label: 'Estimasi km/L', keyboard: TextInputType.number),
+                  const SizedBox(height: 10),
+                  NeoField(controller: budget, label: 'Budget motor bulanan', keyboard: TextInputType.number),
+                  const SizedBox(height: 16),
+                  NeoButton(
+                    label: 'Simpan Settings',
+                    icon: CupertinoIcons.check_mark,
+                    onTap: () {
+                      final next = AppData.fromJson(widget.data.toJson());
+                      next.fuelPrice = double.tryParse(fuelPrice.text) ?? widget.data.fuelPrice;
+                      next.kmPerLiter = double.tryParse(kmPerLiter.text.replaceAll(',', '.')) ?? widget.data.kmPerLiter;
+                      next.moneyBudget = double.tryParse(budget.text) ?? widget.data.moneyBudget;
+                      widget.onUpdate(next);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  NeoButton(
+                    label: 'Copy Backup JSON',
+                    icon: CupertinoIcons.doc_on_doc,
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: jsonEncode(widget.data.toJson())));
+                      if (context.mounted) showNeoSnack(context, 'Backup JSON dicopy.');
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  NeoButton(
+                    label: 'Import JSON',
+                    icon: CupertinoIcons.arrow_down_doc,
+                    onTap: () => askImport(context, widget.onUpdate),
+                  ),
+                ]),
+              );
+            }
+          }
+          
+          class QuickAddSheet extends StatelessWidget {
+            final void Function(double, {String source, String note}) addKm;
+            final void Function(double, {String name}) addFuel;
+            final void Function(String, double, String) addMoney;
+            final void Function(String, String, String) addProblem;
+            const QuickAddSheet({super.key, required this.addKm, required this.addFuel, required this.addMoney, required this.addProblem});
+          
+            @override
+            Widget build(BuildContext context) {
+              return NeoSheet(
+                title: 'Quick Add',
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 1.65,
+                  children: [
+                    QuickTile(icon: CupertinoIcons.add, title: 'KM', onTap: () => askKm(context, addKm)),
+                    QuickTile(icon: CupertinoIcons.drop_fill, title: 'Fuel', onTap: () => askFuel(context, addFuel)),
+                    QuickTile(icon: CupertinoIcons.creditcard_fill, title: 'Money', onTap: () => askMoney(context, addMoney)),
+                    QuickTile(icon: CupertinoIcons.doc_text, title: 'Problem', onTap: () => askProblem(context, addProblem)),
+                  ],
+                ),
+              );
+            }
+          }
+          
+          class NeoSheet extends StatelessWidget {
+            final String title;
+            final Widget child;
+            const NeoSheet({super.key, required this.title, required this.child});
+          
+            @override
+            Widget build(BuildContext context) {
+              return Padding(
+                padding: EdgeInsets.only(left: 12, right: 12, bottom: MediaQuery.of(context).viewInsets.bottom + 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xEE111720),
+                        borderRadius: BorderRadius.circular(32),
+                        border: Border.all(color: Colors.white.withOpacity(.12)),
+                      ),
+                      child: SingleChildScrollView(
+                        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Center(child: Container(width: 44, height: 5, decoration: BoxDecoration(color: Colors.white.withOpacity(.25), borderRadius: BorderRadius.circular(99)))),
+                          const SizedBox(height: 16),
+                          Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 16),
+                          child,
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          
+          void askKm(BuildContext context, void Function(double, {String source, String note}) addKm) {
+            final c = TextEditingController();
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => NeoSheet(
+                title: 'Tambah KM',
+                child: Column(children: [
+                  NeoField(controller: c, label: 'KM hari ini', keyboard: TextInputType.number),
+                  const SizedBox(height: 14),
+                  NeoButton(
+                    label: 'Simpan KM',
+                    icon: CupertinoIcons.check_mark,
+                    onTap: () {
+                      final km = double.tryParse(c.text.replaceAll(',', '.')) ?? 0;
+                      addKm(km);
+                      Navigator.pop(context);
+                    },
+                  ),
+                ]),
+              ),
+            );
+          }
+          
+          void askFuel(BuildContext context, void Function(double, {String name}) addFuel) {
+            final c = TextEditingController();
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => NeoSheet(
+                title: 'Isi BBM',
+                child: Column(children: [
+                  NeoField(controller: c, label: 'Liter', keyboard: TextInputType.number),
+                  const SizedBox(height: 14),
+                  NeoButton(
+                    label: 'Simpan Fuel',
+                    icon: CupertinoIcons.drop_fill,
+                    onTap: () {
+                      final liters = double.tryParse(c.text.replaceAll(',', '.')) ?? 0;
+                      if (liters > 0) addFuel(liters, name: 'Custom Fuel');
+                      Navigator.pop(context);
+                    },
+                  ),
+                ]),
+              ),
+            );
+          }
+          
+          void askMoney(BuildContext context, void Function(String, double, String) addMoney) {
+            final amount = TextEditingController();
+            final note = TextEditingController();
+            var category = 'Service';
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => StatefulBuilder(
+                builder: (context, setState) => NeoSheet(
+                  title: 'Tambah Expense',
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Wrap(spacing: 8, runSpacing: 8, children: ['Service', 'Fuel', 'Modif', 'Tools', 'Other'].map((cat) {
+                      return ChipAction(category == cat ? '✓ $cat' : cat, () => setState(() => category = cat));
+                    }).toList()),
+                    const SizedBox(height: 12),
+                    NeoField(controller: amount, label: 'Nominal', keyboard: TextInputType.number),
+                    const SizedBox(height: 10),
+                    NeoField(controller: note, label: 'Catatan'),
+                    const SizedBox(height: 14),
+                    NeoButton(
+                      label: 'Simpan Expense',
+                      icon: CupertinoIcons.check_mark,
+                      onTap: () {
+                        final value = double.tryParse(amount.text) ?? 0;
+                        if (value > 0) addMoney(category, value, note.text.trim().isEmpty ? category : note.text.trim());
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ]),
+                ),
+              ),
+            );
+          }
+          
+          void askProblem(BuildContext context, void Function(String, String, String) addProblem, {String preset = ''}) {
+            final title = TextEditingController(text: preset);
+            final note = TextEditingController();
+            var level = 'Ringan';
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => StatefulBuilder(
+                builder: (context, setState) => NeoSheet(
+                  title: 'Catat Problem',
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    NeoField(controller: title, label: 'Gejala'),
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, children: ['Ringan', 'Sedang', 'Bahaya'].map((l) => ChipAction(level == l ? '✓ $l' : l, () => setState(() => level = l))).toList()),
+                    const SizedBox(height: 10),
+                    NeoField(controller: note, label: 'Catatan'),
+                    const SizedBox(height: 14),
+                    NeoButton(
+                      label: 'Simpan Problem',
+                      icon: CupertinoIcons.check_mark,
+                      onTap: () {
+                        if (title.text.trim().isNotEmpty) addProblem(title.text.trim(), level, note.text.trim());
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ]),
+                ),
+              ),
+            );
+          }
+          
+          void askImport(BuildContext context, ValueChanged<AppData> onUpdate) {
+            final c = TextEditingController();
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => NeoSheet(
+                title: 'Import JSON',
+                child: Column(children: [
+                  NeoField(controller: c, label: 'Paste backup JSON'),
+                  const SizedBox(height: 14),
+                  NeoButton(
+                    label: 'Import',
+                    icon: CupertinoIcons.arrow_down_doc,
+                    onTap: () {
+                      try {
+                        onUpdate(AppData.fromJson(jsonDecode(c.text) as Map<String, dynamic>));
+                        Navigator.pop(context);
+                        showNeoSnack(context, 'Import berhasil.');
+                      } catch (_) {
+                        showNeoSnack(context, 'JSON salah / rusak.');
+                      }
+                    },
+                  ),
+                ]),
+              ),
+            );
+          }
+          
+          void showNeoSnack(BuildContext context, String text) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(text),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: const Color(0xEE111720),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            );
+          }
+          
+          String fmt(double v) {
+            if (v.abs() >= 100) return v.toStringAsFixed(0);
+            if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+            return v.toStringAsFixed(1);
+          }
+          
+          String rupiah(double v) {
+            final s = v.round().toString();
+            final buffer = StringBuffer();
+            for (var i = 0; i < s.length; i++) {
+              final left = s.length - i;
+              buffer.write(s[i]);
+              if (left > 1 && left % 3 == 1) buffer.write('.');
+            }
+            return buffer.toString();
+          }
+          
+          String dayName(int weekday) {
+            const names = ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+            return names[weekday];
+          }
+          
+          String formatDate(String iso) {
+            final dt = DateTime.tryParse(iso);
+            if (dt == null) return '-';
+            return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+          }
+          
+          EOF_MAIN
+          cat > /tmp/ngr_icon.b64 <<'EOF_ICON'
+          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
+          EOF_ICON
+          base64 -d /tmp/ngr_icon.b64 > assets/ngr_icon.png
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Analyze source
+        run: flutter analyze || true
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -e
+          echo "Listing Flutter APK output..."
+          find build -type f -name "*.apk" -print
+          mkdir -p artifact
+          cp build/app/outputs/flutter-apk/*.apk artifact/ || true
+          cp build/app/outputs/apk/debug/*.apk artifact/ || true
+          ls -lah artifact
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngr-neo-debug-apk-v0-1-4
+          path: artifact/*.apk
+          if-no-files-found: error
